@@ -12,6 +12,28 @@ static NSString *const YuLiquidMagnifierNotifyHide = @"com.yu.liquidmagnifier.hi
 
 static BOOL YuLiquidMagnifierObserversInstalled = NO;
 
+// 诊断用：每加载一个进程就往 /var/mobile/Library/Caches/com.yu.liquidmagnifier/loaded.log 记一行，
+// 用 Filza 打开这个文件就能确认插件到底有没有被注入到目标 App。
+static void yu_liquidmagnifier_writeLoadMarker(void) {
+    NSString *dir = @"/var/mobile/Library/Caches/com.yu.liquidmagnifier";
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:NULL];
+    NSString *file = [dir stringByAppendingPathComponent:@"loaded.log"];
+    NSString *line = [NSString stringWithFormat:@"%@ pid=%d %@ %@\n",
+                      [NSDate date], getpid(),
+                      NSProcessInfo.processInfo.processName,
+                      [NSBundle mainBundle].bundleIdentifier ?: @"-"];
+    NSString *existing = [NSString stringWithContentsOfFile:file
+                                                   encoding:NSUTF8StringEncoding
+                                                      error:NULL] ?: @"";
+    [[existing stringByAppendingString:line] writeToFile:file
+                                               atomically:YES
+                                                 encoding:NSUTF8StringEncoding
+                                                    error:NULL];
+}
+
 static void yu_liquidmagnifier_handleDarwinNotification(CFNotificationCenterRef center, void *observer,
                                                         CFStringRef name, const void *object,
                                                         CFDictionaryRef userInfo) {
@@ -38,6 +60,8 @@ static void yu_liquidmagnifier_handleDarwinNotification(CFNotificationCenterRef 
 // 注入所有进程（悬浮放大镜需要在主屏和所有 App 内生效）。
 // 镜片默认不显示，由「三指长按」或「快捷指令 / Darwin 通知」唤出。
 static void yu_liquidmagnifier_installOverlay(void) {
+    yu_liquidmagnifier_writeLoadMarker();
+
     YuLiquidMagnifierConfig *config = [YuLiquidMagnifierConfig yu_liquidmagnifier_shared];
     if (![config yu_liquidmagnifier_isEnabled]) return;
     if (![UIApplication sharedApplication]) return;

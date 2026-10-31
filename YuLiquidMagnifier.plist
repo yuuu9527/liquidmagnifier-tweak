@@ -3,6 +3,15 @@
 <plist version="1.0">
 <dict>
     <key>Filter</key>
-    <dict/>
+    <dict>
+        <key>Bundles</key>
+        <array>
+            <string>com.apple.springboard</string>
+            <string>com.apple.SpringBoard</string>
+            <!-- 所有链接了 UIKit 的 App 进程都会命中，从而做到「全 App 生效」 -->
+            <string>com.apple.UIKit</string>
+            <string>com.apple.uikit</string>
+        </array>
+    </dict>
 </dict>
 </plist>
