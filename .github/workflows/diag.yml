@@ -1,8 +1,8 @@
-name: Diag
+name: DiagMac
 on: [push]
 permissions: {contents: read}
 jobs:
   t:
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     steps:
-      - run: echo ok && uname -a
+      - run: echo mac-ok
