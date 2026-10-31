@@ -33,9 +33,13 @@ static void yu_liquidmagnifier_appendLog(NSString *fileName, NSString *line) {
                                                     error:NULL];
 }
 
+#ifndef LM_VERSION
+#define LM_VERSION "dev"
+#endif
+
 static void yu_liquidmagnifier_writeLoadMarker(void) {
-    NSString *line = [NSString stringWithFormat:@"%@ pid=%d %@ %@\n",
-                      [NSDate date], getpid(),
+    NSString *line = [NSString stringWithFormat:@"%@ v%@ pid=%d %@ %@\n",
+                      [NSDate date], @LM_VERSION, getpid(),
                       NSProcessInfo.processInfo.processName,
                       [NSBundle mainBundle].bundleIdentifier ?: @"-"];
     yu_liquidmagnifier_appendLog(@"loaded.log", line);

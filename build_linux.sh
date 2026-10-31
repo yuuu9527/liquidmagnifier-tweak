@@ -39,6 +39,7 @@ for scheme in $SCHEMES; do
 
     CF="-target arm64-apple-ios$MINIOS -arch arm64 -isysroot $SDK -miphoneos-version-min=$MINIOS \
         -fobjc-arc -O2 -I$ROOT/Headers -I$ROOT/Sources -I$VENDOR_INC $DEFINE \
+        -DLM_VERSION=\"$VERSION\" \
         -Wno-nullability-completeness -Wno-deprecated-declarations"
 
     perl "$LOGO_PL" Hooks/$NAME"Main.xm" > "$OUT/$NAME"Main.mm
@@ -93,7 +94,7 @@ Description: 悬浮实时放大镜，放大当前位置的屏幕内容；单指�
 Maintainer: 鱼教兽
 Author: 鱼教兽
 Section: Yu-Tweaks
-Depends: mobilesubstrate, preferenceloader
+Depends: mobilesubstrate
 EOF
 
     mkdir -p packages
