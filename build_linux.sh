@@ -57,11 +57,19 @@ for scheme in $SCHEMES; do
 
     "$LDID" -S "$OUT/$NAME.dylib"
 
+    # 触发命令 lqm：给快捷指令 / NewTerm 用
+    clang -target arm64-apple-ios$MINIOS -arch arm64 -isysroot $SDK -miphoneos-version-min=$MINIOS \
+        -fuse-ld=lld -framework CoreFoundation -o "$OUT/lqm" tools/lqm.c
+    "$LDID" -S "$OUT/lqm"
+
     PKGROOT="$OUT/root"
     DL="$PKGROOT/${PREFIX}Library/MobileSubstrate/DynamicLibraries"
-    mkdir -p "$DL" "$PKGROOT/DEBIAN"
+    BIN="$PKGROOT/${PREFIX}usr/bin"
+    mkdir -p "$DL" "$BIN" "$PKGROOT/DEBIAN"
     cp "$OUT/$NAME.dylib" "$DL/"
     cp "$NAME.plist" "$DL/"
+    cp "$OUT/lqm" "$BIN/lqm"
+    chmod 0755 "$BIN/lqm"
 
     cat > "$PKGROOT/DEBIAN/control" <<EOF
 Package: $PKGID

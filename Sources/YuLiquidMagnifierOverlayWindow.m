@@ -3,45 +3,28 @@
 #import "YuLiquidMagnifierConfig.h"
 
 static YuLiquidMagnifierOverlayWindow *YuLiquidMagnifierSharedWindow;
-static UILongPressGestureRecognizer *YuLiquidMagnifierTrigger;
-
-// 找当前前台 App 的普通层级 key window（排除悬浮层自身），用作三指长按的挂载点。
-static UIWindow *yu_liquidmagnifier_keyWindow(void) {
-    UIApplication *app = [UIApplication sharedApplication];
-    if (!app) return nil;
-
-    NSMutableArray<UIWindow *> *windows = [NSMutableArray array];
-    if (@available(iOS 13.0, *)) {
-        for (UIScene *scene in app.connectedScenes) {
-            if (![scene isKindOfClass:[UIWindowScene class]]) continue;
-            if (scene.activationState != UISceneActivationStateForegroundActive) continue;
-            [windows addObjectsFromArray:((UIWindowScene *)scene).windows];
-        }
-    }
-    if (windows.count == 0) {
-        [windows addObjectsFromArray:app.windows];
-    }
-
-    UIWindow *fallback = nil;
-    for (UIWindow *window in windows) {
-        if (window == YuLiquidMagnifierSharedWindow) continue;
-        if (window.hidden || window.alpha < 0.01) continue;
-        if (window.windowLevel != UIWindowLevelNormal) continue;
-        if (window.isKeyWindow) return window;
-        if (!fallback) fallback = window;
-    }
-    return fallback;
-}
-
+static NSUInteger YuLiquidMagnifierCreateRetry = 0;
 
 @implementation YuLiquidMagnifierOverlayWindow {
     YuLiquidMagnifierCaptureManager *_captureManager;
+    NSUInteger _sceneRetries;
 }
 
 + (instancetype)yu_liquidmagnifier_ensureCreated {
     if (YuLiquidMagnifierSharedWindow) return YuLiquidMagnifierSharedWindow;
-    if (![UIApplication sharedApplication]) return nil;
-    if (![UIScreen mainScreen]) return nil;
+
+    // 极早期（dylib 刚被注入）UIApplication / UIScreen 可能还不存在，
+    // 这里不放弃，等主队列就绪后重试若干次。
+    if (![UIApplication sharedApplication] || ![UIScreen mainScreen]) {
+        if (YuLiquidMagnifierCreateRetry++ > 50) return nil;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            YuLiquidMagnifierOverlayWindow *window = [YuLiquidMagnifierOverlayWindow yu_liquidmagnifier_ensureCreated];
+            if (window.hidden) [window yu_liquidmagnifier_setVisible:YES];
+        });
+        return nil;
+    }
+    YuLiquidMagnifierCreateRetry = 0;
 
     YuLiquidMagnifierOverlayWindow *window = [[self alloc] initWithFrame:[UIScreen mainScreen].bounds];
     YuLiquidMagnifierSharedWindow = window;
@@ -49,43 +32,16 @@ static UIWindow *yu_liquidmagnifier_keyWindow(void) {
     return window;
 }
 
-// 三指长按：显示时隐藏、隐藏时显示。
+// 切换显示：显示时显示、隐藏时隐藏（快捷指令 / Darwin 通知调用）。
 + (void)yu_liquidmagnifier_toggleVisibility {
-    YuLiquidMagnifierOverlayWindow *window = [self yu_liquidmagnifier_ensureCreated];
-    if (!window) return;
-    [window yu_liquidmagnifier_setVisible:window.hidden];
-}
-
-// 把三指长按挂到当前 key window 上：cancelsTouchesInView = NO，App 自己的触摸不受影响。
-+ (void)yu_liquidmagnifier_installTrigger {
-    if (![[YuLiquidMagnifierConfig yu_liquidmagnifier_shared] yu_liquidmagnifier_isEnabled]) return;
-
-    UIWindow *host = yu_liquidmagnifier_keyWindow();
-    if (!host) return;
-    if (YuLiquidMagnifierTrigger && YuLiquidMagnifierTrigger.view == host) return;
-
-    if (YuLiquidMagnifierTrigger) {
-        [YuLiquidMagnifierTrigger.view removeGestureRecognizer:YuLiquidMagnifierTrigger];
-        YuLiquidMagnifierTrigger = nil;
+    YuLiquidMagnifierOverlayWindow *window = YuLiquidMagnifierSharedWindow;
+    if (!window) {
+        window = [self yu_liquidmagnifier_ensureCreated];
+        if (!window) return;
+        [window yu_liquidmagnifier_setVisible:YES];
+        return;
     }
-
-    UILongPressGestureRecognizer *trigger =
-        [[UILongPressGestureRecognizer alloc] initWithTarget:self
-                                                      action:@selector(yu_liquidmagnifier_handleTrigger:)];
-    trigger.numberOfTouchesRequired = 3;
-    trigger.minimumPressDuration = 0.5;
-    trigger.allowableMovement = 20.0;
-    trigger.cancelsTouchesInView = NO;
-    trigger.delaysTouchesBegan = NO;
-    trigger.delaysTouchesEnded = NO;
-    [host addGestureRecognizer:trigger];
-    YuLiquidMagnifierTrigger = trigger;
-}
-
-+ (void)yu_liquidmagnifier_handleTrigger:(UILongPressGestureRecognizer *)recognizer {
-    if (recognizer.state != UIGestureRecognizerStateBegan) return;
-    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
-    [self yu_liquidmagnifier_toggleVisibility];
+    [window yu_liquidmagnifier_setVisible:window.hidden];
 }
 
 + (void)yu_liquidmagnifier_hideIfVisible {
@@ -100,6 +56,7 @@ static UIWindow *yu_liquidmagnifier_keyWindow(void) {
         self.windowLevel = 1000000.0;
         self.backgroundColor = [UIColor clearColor];
         self.userInteractionEnabled = YES;
+        _sceneRetries = 0;
 
         UIViewController *rootController = [[UIViewController alloc] init];
         rootController.view.backgroundColor = [UIColor clearColor];
@@ -113,28 +70,26 @@ static UIWindow *yu_liquidmagnifier_keyWindow(void) {
         _lens = lens;
 
         _captureManager = [[YuLiquidMagnifierCaptureManager alloc] initWithLens:lens overlayWindow:self];
-        [_captureManager yu_liquidmagnifier_start];
 
-        self.hidden = YES; // 前台活跃时才显示
+        self.hidden = YES; // 等快捷指令唤出
     }
     return self;
 }
 
 - (void)yu_liquidmagnifier_attachScene {
+    if (!(self.windowScene == nil) || _sceneRetries > 20) return;
     if (@available(iOS 13.0, *)) {
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-            if ([scene isKindOfClass:[UIWindowScene class]]) {
-                self.windowScene = (UIWindowScene *)scene;
-                break;
-            }
+            if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+            self.windowScene = (UIWindowScene *)scene;
+            return;
         }
-        if (!self.windowScene) {
-            // 启动初期场景可能还没就绪，稍后重试
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                [self yu_liquidmagnifier_attachScene];
-            });
-        }
+        // 启动初期场景可能还没就绪，稍后重试
+        _sceneRetries++;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            [self yu_liquidmagnifier_attachScene];
+        });
     }
 }
 
@@ -142,10 +97,10 @@ static UIWindow *yu_liquidmagnifier_keyWindow(void) {
     if (visible) {
         if (!self.windowScene) [self yu_liquidmagnifier_attachScene];
         self.hidden = NO;
-        [self->_captureManager yu_liquidmagnifier_start];
+        [_captureManager yu_liquidmagnifier_start];
     } else {
         self.hidden = YES;
-        [self->_captureManager yu_liquidmagnifier_stop];
+        [_captureManager yu_liquidmagnifier_stop];
     }
 }
 
