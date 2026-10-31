@@ -1,0 +1,9 @@
+Package: com.yu.liquidmagnifier
+Name: 液态放大镜
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: 悬浮实时放大镜，放大当前位置的屏幕内容；单指拖动、双指捏合调圈、双击切倍率。仅悬浮层，不含社交链接。
+Maintainer: 鱼教兽
+Author: 鱼教兽
+Section: Yu-Tweaks
+Depends: mobilesubstrate
