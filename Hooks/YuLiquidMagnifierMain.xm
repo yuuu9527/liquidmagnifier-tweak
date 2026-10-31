@@ -88,6 +88,15 @@ static void yu_liquidmagnifier_handleDarwinNotification(CFNotificationCenterRef 
     });
 }
 
+// 设置面板改动后立刻生效（白名单 / 圆点开关 / 总开关）
+static void yu_liquidmagnifier_handlePreferencesChanged(CFNotificationCenterRef center, void *observer,
+                                                        CFStringRef name, const void *object,
+                                                        CFDictionaryRef userInfo) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [YuLiquidMagnifierOverlayWindow yu_liquidmagnifier_refreshForPreferences];
+    });
+}
+
 static void yu_liquidmagnifier_installOverlay(void) {
     yu_liquidmagnifier_writeLoadMarker();
 
@@ -107,6 +116,11 @@ static void yu_liquidmagnifier_installOverlay(void) {
             (__bridge CFStringRef)name, NULL,
             CFNotificationSuspensionBehaviorDeliverImmediately);
     }
+
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL,
+        yu_liquidmagnifier_handlePreferencesChanged,
+        CFSTR("com.yu.liquidmagnifier.preferences-changed"), NULL,
+        CFNotificationSuspensionBehaviorDeliverImmediately);
 
     // 前台激活时准备好悬浮层，让小圆点出现
     [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification

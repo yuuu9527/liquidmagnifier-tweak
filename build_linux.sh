@@ -62,14 +62,27 @@ for scheme in $SCHEMES; do
         -fuse-ld=lld -framework CoreFoundation -o "$OUT/lqm" tools/lqm.c
     "$LDID" -S "$OUT/lqm"
 
+    # 设置面板 bundle（PreferenceLoader）
+    BUNDLE="$OUT/LiquidMagnifierPrefs.bundle"
+    rm -rf "$BUNDLE"; mkdir -p "$BUNDLE"
+    clang -target arm64-apple-ios$MINIOS -arch arm64 -isysroot $SDK -miphoneos-version-min=$MINIOS \
+        -fobjc-arc -O2 -bundle -fuse-ld=lld -framework UIKit -framework Foundation \
+        -Wl,-undefined,dynamic_lookup -o "$BUNDLE/LiquidMagnifierPrefs" Prefs/*.m
+    "$LDID" -S "$BUNDLE/LiquidMagnifierPrefs"
+    cp Prefs/Info.plist "$BUNDLE/Info.plist"
+
     PKGROOT="$OUT/root"
     DL="$PKGROOT/${PREFIX}Library/MobileSubstrate/DynamicLibraries"
     BIN="$PKGROOT/${PREFIX}usr/bin"
-    mkdir -p "$DL" "$BIN" "$PKGROOT/DEBIAN"
+    PB="$PKGROOT/${PREFIX}Library/PreferenceBundles"
+    PL="$PKGROOT/${PREFIX}Library/PreferenceLoader/Preferences"
+    mkdir -p "$DL" "$BIN" "$PB" "$PL" "$PKGROOT/DEBIAN"
     cp "$OUT/$NAME.dylib" "$DL/"
     cp "$NAME.plist" "$DL/"
     cp "$OUT/lqm" "$BIN/lqm"
     chmod 0755 "$BIN/lqm"
+    cp -R "$BUNDLE" "$PB/"
+    cp Prefs/LiquidMagnifier.plist "$PL/"
 
     cat > "$PKGROOT/DEBIAN/control" <<EOF
 Package: $PKGID
@@ -80,7 +93,7 @@ Description: 悬浮实时放大镜，放大当前位置的屏幕内容；单指�
 Maintainer: 鱼教兽
 Author: 鱼教兽
 Section: Yu-Tweaks
-Depends: mobilesubstrate
+Depends: mobilesubstrate, preferenceloader
 EOF
 
     mkdir -p packages

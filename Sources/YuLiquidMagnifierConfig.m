@@ -56,6 +56,23 @@ static void yu_liquidmagnifier_preferencesDidChange(CFNotificationCenterRef cent
     return [value isKindOfClass:[NSNumber class]] ? [value boolValue] : YES;
 }
 
+- (BOOL)yu_liquidmagnifier_isEnabledForBundleID:(NSString *)bundleID {
+    if (![self yu_liquidmagnifier_isEnabled]) return NO;
+
+    id allValue = [self yu_liquidmagnifier_valueForKey:@"allApps" defaultValue:@(YES)];
+    BOOL allApps = [allValue isKindOfClass:[NSNumber class]] ? [allValue boolValue] : YES;
+    if (allApps) return YES;
+
+    if (bundleID.length == 0) return NO;
+    id value = self.snapshot[bundleID];
+    return [value isKindOfClass:[NSNumber class]] ? [value boolValue] : NO;
+}
+
+- (BOOL)yu_liquidmagnifier_showHandle {
+    id value = [self yu_liquidmagnifier_valueForKey:@"showHandle" defaultValue:@(YES)];
+    return [value isKindOfClass:[NSNumber class]] ? [value boolValue] : YES;
+}
+
 - (void)dealloc {
     CFNotificationCenterRemoveEveryObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                             (__bridge const void *)self);

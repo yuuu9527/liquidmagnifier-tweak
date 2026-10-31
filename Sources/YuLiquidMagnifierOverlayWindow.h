@@ -11,6 +11,9 @@
 + (instancetype)yu_liquidmagnifier_ensureCreated;
 + (void)yu_liquidmagnifier_toggleVisibility;
 + (void)yu_liquidmagnifier_hideIfVisible;
+// 设置面板改动后重新应用（白名单 / 圆点开关 / 总开关）
++ (void)yu_liquidmagnifier_refreshForPreferences;
 - (void)yu_liquidmagnifier_setVisible:(BOOL)visible;
+- (void)yu_liquidmagnifier_applyHandleVisibility;
 
 @end

@@ -5,18 +5,22 @@
 static YuLiquidMagnifierOverlayWindow *YuLiquidMagnifierSharedWindow;
 static NSUInteger YuLiquidMagnifierCreateRetry = 0;
 
-static const CGFloat YuLiquidMagnifierHandleSize = 34.0;
+static const CGFloat YuLiquidMagnifierHandleSize = 26.0;
 
 @implementation YuLiquidMagnifierOverlayWindow {
     YuLiquidMagnifierCaptureManager *_captureManager;
     UIView *_handle;
     NSUInteger _sceneRetries;
     BOOL _lensVisible;
-    BOOL _handleHidden;
 }
 
 + (instancetype)yu_liquidmagnifier_ensureCreated {
     if (YuLiquidMagnifierSharedWindow) return YuLiquidMagnifierSharedWindow;
+
+    // 白名单 / 总开关：当前 App 没被允许就完全不创建
+    NSString *bundleID = [NSBundle mainBundle].bundleIdentifier ?: @"";
+    YuLiquidMagnifierConfig *config = [YuLiquidMagnifierConfig yu_liquidmagnifier_shared];
+    if (![config yu_liquidmagnifier_isEnabledForBundleID:bundleID]) return nil;
 
     // 极早期（dylib 刚被注入）UIApplication / UIScreen 可能还不存在，等主队列就绪后重试。
     if (![UIApplication sharedApplication] || ![UIScreen mainScreen]) {
@@ -42,6 +46,24 @@ static const CGFloat YuLiquidMagnifierHandleSize = 34.0;
     [window yu_liquidmagnifier_setVisible:!window->_lensVisible];
 }
 
+// 设置面板改动后重新应用（白名单 / 圆点开关 / 总开关）
++ (void)yu_liquidmagnifier_refreshForPreferences {
+    NSString *bundleID = [NSBundle mainBundle].bundleIdentifier ?: @"";
+    YuLiquidMagnifierConfig *config = [YuLiquidMagnifierConfig yu_liquidmagnifier_shared];
+    [config yu_liquidmagnifier_reload];
+
+    if (![config yu_liquidmagnifier_isEnabledForBundleID:bundleID]) {
+        if (YuLiquidMagnifierSharedWindow) {
+            [YuLiquidMagnifierSharedWindow yu_liquidmagnifier_setVisible:NO];
+            YuLiquidMagnifierSharedWindow->_handle.hidden = YES;
+            YuLiquidMagnifierSharedWindow->_handle.userInteractionEnabled = NO;
+        }
+        return;
+    }
+    YuLiquidMagnifierOverlayWindow *window = [self yu_liquidmagnifier_ensureCreated];
+    [window yu_liquidmagnifier_applyHandleVisibility];
+}
+
 + (void)yu_liquidmagnifier_hideIfVisible {
     if (!YuLiquidMagnifierSharedWindow) return;
     [YuLiquidMagnifierSharedWindow yu_liquidmagnifier_setVisible:NO];
@@ -56,7 +78,6 @@ static const CGFloat YuLiquidMagnifierHandleSize = 34.0;
         self.userInteractionEnabled = YES;
         _sceneRetries = 0;
         _lensVisible = NO;
-        _handleHidden = NO;
 
         UIViewController *rootController = [[UIViewController alloc] init];
         rootController.view.backgroundColor = [UIColor clearColor];
@@ -79,7 +100,7 @@ static const CGFloat YuLiquidMagnifierHandleSize = 34.0;
         _handle = [[UIView alloc] initWithFrame:CGRectMake(0, 0,
                                                           YuLiquidMagnifierHandleSize,
                                                           YuLiquidMagnifierHandleSize)];
-        _handle.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.45];
+        _handle.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.32];
         _handle.layer.cornerRadius = YuLiquidMagnifierHandleSize / 2.0;
         _handle.layer.borderWidth = 1.0;
         _handle.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.35].CGColor;
@@ -88,7 +109,7 @@ static const CGFloat YuLiquidMagnifierHandleSize = 34.0;
 
         UIImageView *glyph = [[UIImageView alloc] initWithFrame:_handle.bounds];
         glyph.contentMode = UIViewContentModeCenter;
-        glyph.tintColor = [UIColor colorWithWhite:1.0 alpha:0.95];
+        glyph.tintColor = [UIColor colorWithWhite:1.0 alpha:0.72];
         if (@available(iOS 13.0, *)) {
             glyph.image = [UIImage systemImageNamed:@"magnifyingglass"];
         }
@@ -102,16 +123,12 @@ static const CGFloat YuLiquidMagnifierHandleSize = 34.0;
             action:@selector(yu_liquidmagnifier_handleHandlePan:)];
         [_handle addGestureRecognizer:pan];
 
-        UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self
-            action:@selector(yu_liquidmagnifier_handleHandleLongPress:)];
-        longPress.minimumPressDuration = 0.8;
-        [_handle addGestureRecognizer:longPress];
-
         [rootController.view addSubview:_handle];
 
         _captureManager = [[YuLiquidMagnifierCaptureManager alloc] initWithLens:lens overlayWindow:self];
 
         self.hidden = NO; // 常驻：只显示小圆点，镜片等点击后再出现
+        [self yu_liquidmagnifier_applyHandleVisibility];
     }
     return self;
 }
@@ -152,11 +169,18 @@ static const CGFloat YuLiquidMagnifierHandleSize = 34.0;
         [_captureManager yu_liquidmagnifier_stop];
     }
 
-    BOOL showHandle = !visible && !_handleHidden;
     [UIView animateWithDuration:0.16 animations:^{
-        self->_handle.alpha = showHandle ? 1.0 : 0.0;
+        [self yu_liquidmagnifier_applyHandleVisibility];
     }];
-    _handle.userInteractionEnabled = showHandle;
+}
+
+// 小圆点是否显示：受设置里的 showHandle 与镜片是否打开共同决定
+- (void)yu_liquidmagnifier_applyHandleVisibility {
+    BOOL enabled = [[YuLiquidMagnifierConfig yu_liquidmagnifier_shared] yu_liquidmagnifier_showHandle];
+    BOOL show = enabled && !_lensVisible;
+    _handle.hidden = !show;
+    _handle.alpha = show ? 1.0 : 0.0;
+    _handle.userInteractionEnabled = show;
 }
 
 /* ── 小圆点交互 ── */
@@ -180,17 +204,6 @@ static const CGFloat YuLiquidMagnifierHandleSize = 34.0;
     center.x = MIN(MAX(center.x, inset), bounds.size.width - inset);
     center.y = MIN(MAX(center.y, inset), bounds.size.height - inset);
     _handle.center = center;
-}
-
-// 长按小圆点：本次会话内隐藏它（重开 App 或 respring 后回来）
-- (void)yu_liquidmagnifier_handleHandleLongPress:(UILongPressGestureRecognizer *)recognizer {
-    if (recognizer.state != UIGestureRecognizerStateBegan) return;
-    _handleHidden = YES;
-    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium] impactOccurred];
-    [UIView animateWithDuration:0.2 animations:^{
-        self->_handle.alpha = 0.0;
-    }];
-    _handle.userInteractionEnabled = NO;
 }
 
 // 只接收镜片与小圆点上的触摸，其余全部透传给下层窗口
