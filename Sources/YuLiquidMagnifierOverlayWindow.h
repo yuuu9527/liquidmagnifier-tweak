@@ -8,7 +8,10 @@
 
 @property (nonatomic, strong, readonly) YuLiquidMagnifierLensView *lens;
 
-+ (instancetype)yu_liquidmagnifier_ensureVisible;
++ (instancetype)yu_liquidmagnifier_ensureCreated;
++ (void)yu_liquidmagnifier_toggleVisibility;
+// 在当前的 key window 上挂三指长按手势（不拦截 App 自身触摸）
++ (void)yu_liquidmagnifier_installTrigger;
 + (void)yu_liquidmagnifier_hideIfVisible;
 - (void)yu_liquidmagnifier_setVisible:(BOOL)visible;
 

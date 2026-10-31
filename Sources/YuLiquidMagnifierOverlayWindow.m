@@ -1,17 +1,45 @@
 #import "YuLiquidMagnifierOverlayWindow.h"
 #import "YuLiquidMagnifierCaptureManager.h"
+#import "YuLiquidMagnifierConfig.h"
 
 static YuLiquidMagnifierOverlayWindow *YuLiquidMagnifierSharedWindow;
+static UILongPressGestureRecognizer *YuLiquidMagnifierTrigger;
+
+// 找当前前台 App 的普通层级 key window（排除悬浮层自身），用作三指长按的挂载点。
+static UIWindow *yu_liquidmagnifier_keyWindow(void) {
+    UIApplication *app = [UIApplication sharedApplication];
+    if (!app) return nil;
+
+    NSMutableArray<UIWindow *> *windows = [NSMutableArray array];
+    if (@available(iOS 13.0, *)) {
+        for (UIScene *scene in app.connectedScenes) {
+            if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+            if (scene.activationState != UISceneActivationStateForegroundActive) continue;
+            [windows addObjectsFromArray:((UIWindowScene *)scene).windows];
+        }
+    }
+    if (windows.count == 0) {
+        [windows addObjectsFromArray:app.windows];
+    }
+
+    UIWindow *fallback = nil;
+    for (UIWindow *window in windows) {
+        if (window == YuLiquidMagnifierSharedWindow) continue;
+        if (window.hidden || window.alpha < 0.01) continue;
+        if (window.windowLevel != UIWindowLevelNormal) continue;
+        if (window.isKeyWindow) return window;
+        if (!fallback) fallback = window;
+    }
+    return fallback;
+}
+
 
 @implementation YuLiquidMagnifierOverlayWindow {
     YuLiquidMagnifierCaptureManager *_captureManager;
 }
 
-+ (instancetype)yu_liquidmagnifier_ensureVisible {
-    if (YuLiquidMagnifierSharedWindow) {
-        [YuLiquidMagnifierSharedWindow yu_liquidmagnifier_setVisible:YES];
-        return YuLiquidMagnifierSharedWindow;
-    }
++ (instancetype)yu_liquidmagnifier_ensureCreated {
+    if (YuLiquidMagnifierSharedWindow) return YuLiquidMagnifierSharedWindow;
     if (![UIApplication sharedApplication]) return nil;
     if (![UIScreen mainScreen]) return nil;
 
@@ -19,6 +47,45 @@ static YuLiquidMagnifierOverlayWindow *YuLiquidMagnifierSharedWindow;
     YuLiquidMagnifierSharedWindow = window;
     [window yu_liquidmagnifier_attachScene];
     return window;
+}
+
+// 三指长按：显示时隐藏、隐藏时显示。
++ (void)yu_liquidmagnifier_toggleVisibility {
+    YuLiquidMagnifierOverlayWindow *window = [self yu_liquidmagnifier_ensureCreated];
+    if (!window) return;
+    [window yu_liquidmagnifier_setVisible:window.hidden];
+}
+
+// 把三指长按挂到当前 key window 上：cancelsTouchesInView = NO，App 自己的触摸不受影响。
++ (void)yu_liquidmagnifier_installTrigger {
+    if (![[YuLiquidMagnifierConfig yu_liquidmagnifier_shared] yu_liquidmagnifier_isEnabled]) return;
+
+    UIWindow *host = yu_liquidmagnifier_keyWindow();
+    if (!host) return;
+    if (YuLiquidMagnifierTrigger && YuLiquidMagnifierTrigger.view == host) return;
+
+    if (YuLiquidMagnifierTrigger) {
+        [YuLiquidMagnifierTrigger.view removeGestureRecognizer:YuLiquidMagnifierTrigger];
+        YuLiquidMagnifierTrigger = nil;
+    }
+
+    UILongPressGestureRecognizer *trigger =
+        [[UILongPressGestureRecognizer alloc] initWithTarget:self
+                                                      action:@selector(yu_liquidmagnifier_handleTrigger:)];
+    trigger.numberOfTouchesRequired = 3;
+    trigger.minimumPressDuration = 0.5;
+    trigger.allowableMovement = 20.0;
+    trigger.cancelsTouchesInView = NO;
+    trigger.delaysTouchesBegan = NO;
+    trigger.delaysTouchesEnded = NO;
+    [host addGestureRecognizer:trigger];
+    YuLiquidMagnifierTrigger = trigger;
+}
+
++ (void)yu_liquidmagnifier_handleTrigger:(UILongPressGestureRecognizer *)recognizer {
+    if (recognizer.state != UIGestureRecognizerStateBegan) return;
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
+    [self yu_liquidmagnifier_toggleVisibility];
 }
 
 + (void)yu_liquidmagnifier_hideIfVisible {
@@ -75,8 +142,10 @@ static YuLiquidMagnifierOverlayWindow *YuLiquidMagnifierSharedWindow;
     if (visible) {
         if (!self.windowScene) [self yu_liquidmagnifier_attachScene];
         self.hidden = NO;
+        [self->_captureManager yu_liquidmagnifier_start];
     } else {
         self.hidden = YES;
+        [self->_captureManager yu_liquidmagnifier_stop];
     }
 }
 
