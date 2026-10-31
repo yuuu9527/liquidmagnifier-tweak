@@ -13,5 +13,7 @@
 - (instancetype)initWithLens:(YuLiquidMagnifierLensView *)lens overlayWindow:(UIWindow *)overlayWindow;
 - (void)yu_liquidmagnifier_start;
 - (void)yu_liquidmagnifier_stop;
+// 拖动/捏合期间冻结底图，保证跟手
+- (void)yu_liquidmagnifier_setInteractive:(BOOL)interactive;
 
 @end

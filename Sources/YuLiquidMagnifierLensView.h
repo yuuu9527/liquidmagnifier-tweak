@@ -8,6 +8,7 @@
 @property (nonatomic, assign) CGFloat zoom;                // 倍率 1.9 / 2.6 / 3.6
 @property (nonatomic, strong, readonly) UIImageView *imageView; // 承载实时放大画面
 @property (nonatomic, copy) void (^onSingleTap)(void);      // 单击镜片（收起）
+@property (nonatomic, copy) void (^onInteractiveChanged)(BOOL interactive); // 拖动/捏合开始与结束
 
 - (void)yu_liquidmagnifier_setDiameter:(CGFloat)diameter;
 - (void)yu_liquidmagnifier_setZoom:(CGFloat)zoom;

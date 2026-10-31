@@ -73,6 +73,13 @@ static const NSUInteger YuLiquidMagnifierZoomCount = 3;
     UIView *host = self.superview;
     if (!host) return;
 
+    if (recognizer.state == UIGestureRecognizerStateBegan && self.onInteractiveChanged) {
+        self.onInteractiveChanged(YES);
+    } else if ((recognizer.state == UIGestureRecognizerStateEnded ||
+                recognizer.state == UIGestureRecognizerStateCancelled) && self.onInteractiveChanged) {
+        self.onInteractiveChanged(NO);
+    }
+
     if (recognizer.state == UIGestureRecognizerStateChanged) {
         CGPoint translation = [recognizer translationInView:host];
         CGPoint center = self.center;
@@ -99,6 +106,12 @@ static const NSUInteger YuLiquidMagnifierZoomCount = 3;
 - (void)yu_liquidmagnifier_handlePinch:(UIPinchGestureRecognizer *)recognizer {
     if (recognizer.state == UIGestureRecognizerStateBegan) {
         _pinchLastScale = 1.0;
+        if (self.onInteractiveChanged) self.onInteractiveChanged(YES);
+        return;
+    }
+    if (recognizer.state == UIGestureRecognizerStateEnded ||
+        recognizer.state == UIGestureRecognizerStateCancelled) {
+        if (self.onInteractiveChanged) self.onInteractiveChanged(NO);
         return;
     }
     if (recognizer.state == UIGestureRecognizerStateChanged) {

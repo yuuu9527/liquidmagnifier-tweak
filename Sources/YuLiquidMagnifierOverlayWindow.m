@@ -95,6 +95,10 @@ static const CGFloat YuLiquidMagnifierHandleSize = 26.0;
         };
         [rootController.view addSubview:lens];
         _lens = lens;
+        lens.onInteractiveChanged = ^(BOOL interactive) {
+            YuLiquidMagnifierOverlayWindow *strongSelf = weakSelf;
+            [strongSelf->_captureManager yu_liquidmagnifier_setInteractive:interactive];
+        };
 
         // 常驻小圆点：点一下唤出镜片
         _handle = [[UIView alloc] initWithFrame:CGRectMake(0, 0,
