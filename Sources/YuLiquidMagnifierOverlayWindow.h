@@ -9,6 +9,7 @@
 @property (nonatomic, strong, readonly) YuLiquidMagnifierLensView *lens;
 
 + (instancetype)yu_liquidmagnifier_ensureVisible;
++ (void)yu_liquidmagnifier_hideIfVisible;
 - (void)yu_liquidmagnifier_setVisible:(BOOL)visible;
 
 @end

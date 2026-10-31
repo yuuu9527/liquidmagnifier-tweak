@@ -2,3 +2,5 @@
 packages/
 *.deb
 build/
+
+.build/

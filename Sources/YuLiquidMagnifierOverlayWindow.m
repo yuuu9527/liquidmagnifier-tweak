@@ -21,6 +21,11 @@ static YuLiquidMagnifierOverlayWindow *YuLiquidMagnifierSharedWindow;
     return window;
 }
 
++ (void)yu_liquidmagnifier_hideIfVisible {
+    if (!YuLiquidMagnifierSharedWindow) return;
+    [YuLiquidMagnifierSharedWindow yu_liquidmagnifier_setVisible:NO];
+}
+
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
@@ -40,7 +45,7 @@ static YuLiquidMagnifierOverlayWindow *YuLiquidMagnifierSharedWindow;
         [rootController.view addSubview:lens];
         _lens = lens;
 
-        _captureManager = [[YuLiquidMagnifierCaptureManager alloc] yu_liquidmagnifier_initWithLens:lens overlayWindow:self];
+        _captureManager = [[YuLiquidMagnifierCaptureManager alloc] initWithLens:lens overlayWindow:self];
         [_captureManager yu_liquidmagnifier_start];
 
         self.hidden = YES; // 前台活跃时才显示

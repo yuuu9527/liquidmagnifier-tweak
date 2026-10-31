@@ -10,7 +10,7 @@
 @property (nonatomic, weak) YuLiquidMagnifierLensView *lens;
 @property (nonatomic, weak) UIWindow *overlayWindow;
 
-- (instancetype)yu_liquidmagnifier_initWithLens:(YuLiquidMagnifierLensView *)lens overlayWindow:(UIWindow *)overlayWindow;
+- (instancetype)initWithLens:(YuLiquidMagnifierLensView *)lens overlayWindow:(UIWindow *)overlayWindow;
 - (void)yu_liquidmagnifier_start;
 - (void)yu_liquidmagnifier_stop;
 

@@ -23,7 +23,7 @@ static void yu_liquidmagnifier_installOverlay(void) {
     [center addObserverForName:UIApplicationWillResignActiveNotification
                         object:nil queue:[NSOperationQueue mainQueue]
                     usingBlock:^(NSNotification *note) {
-        [YuLiquidMagnifierOverlayWindow yu_liquidmagnifier_setVisible:NO];
+        [YuLiquidMagnifierOverlayWindow yu_liquidmagnifier_hideIfVisible];
     }];
 
     // 注入较晚、通知已发过的兜底：直接创建

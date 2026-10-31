@@ -7,7 +7,7 @@
     BOOL _running;
 }
 
-- (instancetype)yu_liquidmagnifier_initWithLens:(YuLiquidMagnifierLensView *)lens overlayWindow:(UIWindow *)overlayWindow {
+- (instancetype)initWithLens:(YuLiquidMagnifierLensView *)lens overlayWindow:(UIWindow *)overlayWindow {
     self = [super init];
     if (self) {
         _lens = lens;
