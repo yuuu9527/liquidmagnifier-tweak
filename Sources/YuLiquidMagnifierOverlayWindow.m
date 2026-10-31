@@ -5,22 +5,25 @@
 static YuLiquidMagnifierOverlayWindow *YuLiquidMagnifierSharedWindow;
 static NSUInteger YuLiquidMagnifierCreateRetry = 0;
 
+static const CGFloat YuLiquidMagnifierHandleSize = 34.0;
+
 @implementation YuLiquidMagnifierOverlayWindow {
     YuLiquidMagnifierCaptureManager *_captureManager;
+    UIView *_handle;
     NSUInteger _sceneRetries;
+    BOOL _lensVisible;
+    BOOL _handleHidden;
 }
 
 + (instancetype)yu_liquidmagnifier_ensureCreated {
     if (YuLiquidMagnifierSharedWindow) return YuLiquidMagnifierSharedWindow;
 
-    // 极早期（dylib 刚被注入）UIApplication / UIScreen 可能还不存在，
-    // 这里不放弃，等主队列就绪后重试若干次。
+    // 极早期（dylib 刚被注入）UIApplication / UIScreen 可能还不存在，等主队列就绪后重试。
     if (![UIApplication sharedApplication] || ![UIScreen mainScreen]) {
         if (YuLiquidMagnifierCreateRetry++ > 50) return nil;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
-            YuLiquidMagnifierOverlayWindow *window = [YuLiquidMagnifierOverlayWindow yu_liquidmagnifier_ensureCreated];
-            if (window.hidden) [window yu_liquidmagnifier_setVisible:YES];
+            [YuLiquidMagnifierOverlayWindow yu_liquidmagnifier_ensureCreated];
         });
         return nil;
     }
@@ -32,16 +35,11 @@ static NSUInteger YuLiquidMagnifierCreateRetry = 0;
     return window;
 }
 
-// 切换显示：显示时显示、隐藏时隐藏（快捷指令 / Darwin 通知调用）。
+// 切换镜片显示（小圆点 / 快捷指令 / Darwin 通知共用的入口）
 + (void)yu_liquidmagnifier_toggleVisibility {
-    YuLiquidMagnifierOverlayWindow *window = YuLiquidMagnifierSharedWindow;
-    if (!window) {
-        window = [self yu_liquidmagnifier_ensureCreated];
-        if (!window) return;
-        [window yu_liquidmagnifier_setVisible:YES];
-        return;
-    }
-    [window yu_liquidmagnifier_setVisible:window.hidden];
+    YuLiquidMagnifierOverlayWindow *window = [self yu_liquidmagnifier_ensureCreated];
+    if (!window) return;
+    [window yu_liquidmagnifier_setVisible:!window->_lensVisible];
 }
 
 + (void)yu_liquidmagnifier_hideIfVisible {
@@ -57,34 +55,80 @@ static NSUInteger YuLiquidMagnifierCreateRetry = 0;
         self.backgroundColor = [UIColor clearColor];
         self.userInteractionEnabled = YES;
         _sceneRetries = 0;
+        _lensVisible = NO;
+        _handleHidden = NO;
 
         UIViewController *rootController = [[UIViewController alloc] init];
         rootController.view.backgroundColor = [UIColor clearColor];
         self.rootViewController = rootController;
 
+        // 镜片（默认隐藏）
         CGFloat diameter = 240.0;
         YuLiquidMagnifierLensView *lens =
             [[YuLiquidMagnifierLensView alloc] initWithFrame:CGRectMake(0, 0, diameter, diameter)];
         lens.center = CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame) * 0.7);
+        lens.hidden = YES;
+        __weak typeof(self) weakSelf = self;
+        lens.onSingleTap = ^{
+            [weakSelf yu_liquidmagnifier_setVisible:NO];
+        };
         [rootController.view addSubview:lens];
         _lens = lens;
 
+        // 常驻小圆点：点一下唤出镜片
+        _handle = [[UIView alloc] initWithFrame:CGRectMake(0, 0,
+                                                          YuLiquidMagnifierHandleSize,
+                                                          YuLiquidMagnifierHandleSize)];
+        _handle.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.45];
+        _handle.layer.cornerRadius = YuLiquidMagnifierHandleSize / 2.0;
+        _handle.layer.borderWidth = 1.0;
+        _handle.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.35].CGColor;
+        _handle.center = CGPointMake(frame.size.width - YuLiquidMagnifierHandleSize,
+                                     frame.size.height * 0.55);
+
+        UIImageView *glyph = [[UIImageView alloc] initWithFrame:_handle.bounds];
+        glyph.contentMode = UIViewContentModeCenter;
+        glyph.tintColor = [UIColor colorWithWhite:1.0 alpha:0.95];
+        if (@available(iOS 13.0, *)) {
+            glyph.image = [UIImage systemImageNamed:@"magnifyingglass"];
+        }
+        [_handle addSubview:glyph];
+
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self
+            action:@selector(yu_liquidmagnifier_handleHandleTap:)];
+        [_handle addGestureRecognizer:tap];
+
+        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self
+            action:@selector(yu_liquidmagnifier_handleHandlePan:)];
+        [_handle addGestureRecognizer:pan];
+
+        UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self
+            action:@selector(yu_liquidmagnifier_handleHandleLongPress:)];
+        longPress.minimumPressDuration = 0.8;
+        [_handle addGestureRecognizer:longPress];
+
+        [rootController.view addSubview:_handle];
+
         _captureManager = [[YuLiquidMagnifierCaptureManager alloc] initWithLens:lens overlayWindow:self];
 
-        self.hidden = YES; // 等快捷指令唤出
+        self.hidden = NO; // 常驻：只显示小圆点，镜片等点击后再出现
     }
     return self;
 }
 
+// 不抢 key window，避免影响宿主 App 的输入与键盘
+- (BOOL)canBecomeKeyWindow {
+    return NO;
+}
+
 - (void)yu_liquidmagnifier_attachScene {
-    if (!(self.windowScene == nil) || _sceneRetries > 20) return;
+    if (self.windowScene != nil || _sceneRetries > 20) return;
     if (@available(iOS 13.0, *)) {
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if (![scene isKindOfClass:[UIWindowScene class]]) continue;
             self.windowScene = (UIWindowScene *)scene;
             return;
         }
-        // 启动初期场景可能还没就绪，稍后重试
         _sceneRetries++;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
@@ -94,24 +138,67 @@ static NSUInteger YuLiquidMagnifierCreateRetry = 0;
 }
 
 - (void)yu_liquidmagnifier_setVisible:(BOOL)visible {
+    if (visible == _lensVisible) return;
+    _lensVisible = visible;
+
+    if (!self.windowScene) [self yu_liquidmagnifier_attachScene];
+    self.hidden = NO;
+
     if (visible) {
-        if (!self.windowScene) [self yu_liquidmagnifier_attachScene];
-        self.hidden = NO;
+        _lens.hidden = NO;
         [_captureManager yu_liquidmagnifier_start];
     } else {
-        self.hidden = YES;
+        _lens.hidden = YES;
         [_captureManager yu_liquidmagnifier_stop];
     }
+
+    BOOL showHandle = !visible && !_handleHidden;
+    [UIView animateWithDuration:0.16 animations:^{
+        self->_handle.alpha = showHandle ? 1.0 : 0.0;
+    }];
+    _handle.userInteractionEnabled = showHandle;
 }
 
-// 只接收镜片圆内的触摸，其余全部透传给下层窗口
+/* ── 小圆点交互 ── */
+
+- (void)yu_liquidmagnifier_handleHandleTap:(UITapGestureRecognizer *)recognizer {
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
+    [self yu_liquidmagnifier_setVisible:!_lensVisible];
+}
+
+- (void)yu_liquidmagnifier_handleHandlePan:(UIPanGestureRecognizer *)recognizer {
+    UIView *host = _handle.superview;
+    if (!host) return;
+    CGPoint translation = [recognizer translationInView:host];
+    CGPoint center = _handle.center;
+    center.x += translation.x;
+    center.y += translation.y;
+    [recognizer setTranslation:CGPointZero inView:host];
+
+    CGFloat inset = YuLiquidMagnifierHandleSize / 2.0;
+    CGRect bounds = host.bounds;
+    center.x = MIN(MAX(center.x, inset), bounds.size.width - inset);
+    center.y = MIN(MAX(center.y, inset), bounds.size.height - inset);
+    _handle.center = center;
+}
+
+// 长按小圆点：本次会话内隐藏它（重开 App 或 respring 后回来）
+- (void)yu_liquidmagnifier_handleHandleLongPress:(UILongPressGestureRecognizer *)recognizer {
+    if (recognizer.state != UIGestureRecognizerStateBegan) return;
+    _handleHidden = YES;
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium] impactOccurred];
+    [UIView animateWithDuration:0.2 animations:^{
+        self->_handle.alpha = 0.0;
+    }];
+    _handle.userInteractionEnabled = NO;
+}
+
+// 只接收镜片与小圆点上的触摸，其余全部透传给下层窗口
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *hit = [super hitTest:point withEvent:event];
     if (!hit) return nil;
-    if (hit == self || hit == self.rootViewController.view) {
-        return nil; // 空白区域：交给下面的窗口
-    }
-    return hit; // 镜片及其子视图
+    if (hit == self || hit == self.rootViewController.view) return nil;
+    return hit;
 }
 
 @end

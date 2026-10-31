@@ -108,7 +108,15 @@ static void yu_liquidmagnifier_installOverlay(void) {
             CFNotificationSuspensionBehaviorDeliverImmediately);
     }
 
-    // 切后台时收起，避免镜片残留到下一次前台
+    // 前台激活时准备好悬浮层，让小圆点出现
+    [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
+                                                      object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification *note) {
+        [YuLiquidMagnifierOverlayWindow yu_liquidmagnifier_ensureCreated];
+    }];
+
+    // 切后台时收起镜片，避免镜片残留到下一次前台
     [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillResignActiveNotification
                                                       object:nil
                                                        queue:[NSOperationQueue mainQueue]

@@ -53,7 +53,20 @@ static const NSUInteger YuLiquidMagnifierZoomCount = 3;
         action:@selector(yu_liquidmagnifier_handleDoubleTap:)];
     doubleTap.numberOfTapsRequired = 2;
     [self addGestureRecognizer:doubleTap];
+
+    // 单击收起镜片：必须等双击失败，避免切倍率时误收起
+    UITapGestureRecognizer *singleTap = [[UITapGestureRecognizer alloc] initWithTarget:self
+        action:@selector(yu_liquidmagnifier_handleSingleTap:)];
+    singleTap.numberOfTapsRequired = 1;
+    [singleTap requireGestureRecognizerToFail:doubleTap];
+    [self addGestureRecognizer:singleTap];
 }
+
+- (void)yu_liquidmagnifier_handleSingleTap:(UITapGestureRecognizer *)recognizer {
+    void (^handler)(void) = self.onSingleTap;
+    if (handler) handler();
+}
+
 
 /* ── 单指拖动 ── */
 - (void)yu_liquidmagnifier_handlePan:(UIPanGestureRecognizer *)recognizer {
